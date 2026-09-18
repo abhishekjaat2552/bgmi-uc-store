@@ -21,6 +21,9 @@ main{min-height:70vh}section{max-width:1180px;margin:auto;padding:22px 18px}
 .uidBox{background:#fff;border:1px solid #e1e5ea;border-radius:16px;padding:20px;margin-top:18px;box-shadow:0 5px 20px #18233308}
 .uidRow{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:12px}input{width:100%;padding:14px;border:1px solid #cfd5dd;border-radius:9px;font-size:16px;outline:none}input:focus{border-color:#f0a900}
 .btn{border:0;background:#ffb900;color:#111;border-radius:9px;padding:13px 18px;font-weight:900;cursor:pointer}.btn:hover{filter:brightness(.96)}
+#verifyStatus.success{color:#15803d}
+#verifyStatus.error{color:#b91c1c}
+#verifyStatus.loading{color:#a16207}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}
 .pack{border:1px solid #e0e4e9;background:#fff;border-radius:14px;text-align:left;padding:18px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:.18s;box-shadow:0 4px 16px #17223108}
 .pack:hover{border-color:#ffb900;box-shadow:0 7px 22px #17223116;transform:translateY(-2px)}.uc{font-size:21px;font-weight:900}.price{font-size:18px;font-weight:900;color:#d89100;margin-top:7px}.per{font-size:12px;color:#858b94;margin-top:5px}.arrow{font-size:30px;color:#b2b7bf}
@@ -52,7 +55,9 @@ footer{background:#111720;color:#aeb7c3;margin-top:30px;padding:28px 18px;text-a
 <h2 class="title">Add BGMI Player ID</h2>
 <div class="muted">Use your numeric BGMI Player ID. Check every digit before payment.</div>
 <div class="uidRow"><input id="uid" inputmode="numeric" placeholder="Enter BGMI Player ID"><button class="btn" onclick="saveUid()">Save Player ID</button></div>
+<div style="margin-top:10px"><button id="verifyUidBtn" class="btn" type="button" style="width:100%">✓ Verify Player ID</button></div>
 <div id="uidSaved" class="muted" style="margin-top:10px"></div>
+<div id="verifyStatus" class="muted" style="margin-top:8px;font-weight:700"></div>
 </div>
 </section>
 
@@ -230,7 +235,44 @@ footer{background:#111720;color:#aeb7c3;margin-top:30px;padding:28px 18px;text-a
       uid ? "Saved Player ID: " + uid : "Please enter your Player ID.";
   };
 
+  let verifiedPlayer = null;
+
+  function setVerifyStatus(message, type) {
+    const el = document.getElementById("verifyStatus");
+    el.className = type || "muted";
+    el.textContent = message || "";
+  }
+
+  function getUsername(data) {
+    return data?.username || data?.result?.player?.username || data?.result?.username || data?.player?.username || data?.data?.username || data?.data?.player?.username || data?.nickname || data?.name || "";
+  }
+
+  document.getElementById("verifyUidBtn").addEventListener("click", async function () {
+    const uid = document.getElementById("uid").value.trim();
+    if (!/^\d+$/.test(uid)) { setVerifyStatus("Please enter a valid numeric BGMI Player ID.", "error"); return; }
+    const btn = document.getElementById("verifyUidBtn");
+    btn.disabled = true; btn.textContent = "Checking…"; setVerifyStatus("Verifying Player ID…", "loading");
+    verifiedPlayer = null;
+    try {
+      const r = await fetch("/.netlify/functions/verify-bgmi", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({uid})});
+      const data = await r.json().catch(() => ({}));
+      const username = getUsername(data);
+      if (!r.ok || data.success !== true || !username) throw new Error(data.error || data.message || "Player ID could not be verified.");
+      verifiedPlayer = {uid, username};
+      document.getElementById("uidSaved").innerHTML = "✓ <b>Verified Player</b> — Username: <b>" + escapeHtml(username) + "</b>";
+      setVerifyStatus("Player ID verified successfully.", "success");
+    } catch (e) {
+      setVerifyStatus(e.message || "Verification failed. Please try again.", "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "✓ Verify Player ID";
+    }
+  });
+
+  function escapeHtml(v) { return String(v).replace(/[&<>\"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;", "'":"&#39;"}[c])); }
+
   window.selectPack = function(index) {
+    const currentUid = document.getElementById("uid").value.trim();
+    if (!verifiedPlayer || verifiedPlayer.uid !== currentUid) { alert("Please verify your BGMI Player ID first."); return; }
     selected = packs[index];
 
     document.getElementById("mTitle").textContent =
